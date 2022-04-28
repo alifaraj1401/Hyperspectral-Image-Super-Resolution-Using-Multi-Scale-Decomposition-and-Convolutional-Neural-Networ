@@ -1,0 +1,76 @@
+%%%%%%%%%%%%%%% load net %%%%%%%%%%%%%%
+
+modelfile = 'CNNSRAPP.json';
+weights = 'CNNSRAPP.h5';
+netapp = importKerasNetwork(modelfile,'WeightFile',weights,'OutputLayerType','regression')
+
+modelfile = 'CNNSRDET.json';
+weights = 'CNNSRDET.h5';
+netdet = importKerasNetwork(modelfile,'WeightFile',weights,'OutputLayerType','regression')
+
+%%%%%%%%%%%%%%%%%%%%% test image %%%%%%%%%%%%%%%%
+trainImagesDir = fullfile('G:\','test');
+exts = {'.jpg'};
+testIm = imageDatastore(trainImagesDir,'FileExtensions',exts);
+Ireference = readimage(testIm,7);
+%Ireference = im2double(Ireference);
+
+%%%%%%%%%%%%%%%%%%%%%%%%% Create a low-resolution %%%%%%%%%%%%%%%%%%%%%%%
+Iycbcr = rgb2ycbcr(Ireference);
+Iy = Iycbcr(:,:,1);
+Iy=im2double(Iy);
+%figure(1),imshow(Iy)
+%title('High-Resolution Reference Image')
+
+%%%%%%%%%%%%%%%%%%%%%%%%%% Improve Image Resolution Using Bicubic Interpolation %%%%%%%%%%%%%%%
+
+[nrows ncols]=size(Iy);
+scaleFactor = 0.5;
+Ilow = imresize(Iy,scaleFactor,'bicubic');
+
+Ibicubic = imresize(Ilow,[nrows ncols],'bicubic');
+%figure(2),imshow(Ibicubic)
+%title('High-Resolution Image Obtained Using Bicubic Interpolation')
+
+up_scale = 2;
+%wtype = 'bior1.1';
+wtype = 'db1';
+
+%%%%%%%%%%%% net output %%%%%%%5%
+app = activations(netapp,Ilow,7);
+det = activations(netdet,Ilow,7);
+hor=det(:,:,1);
+ver=det(:,:,2);
+dia=det(:,:,3);
+figure(1),imshow(app)
+figure(2),imshow((hor))
+figure(3),imshow((ver))
+figure(4),imshow((dia))
+imrec = idwt2(app, hor, ver, dia, wtype);
+
+%%%%%%%%%%%%%%%%%%%%%%%%%% Visual and Quantitative Comparison %%%%%%%%%%%%%%%%%%%5
+
+imrec = shave(uint8(imrec * 255), [up_scale, up_scale]);
+Iy = shave(uint8(Iy * 255), [up_scale, up_scale]);
+Ibicubic = shave(uint8(Ibicubic * 255), [up_scale, up_scale]);
+
+[nrows ncols]=size(Ibicubic);
+Ibicubic=Ibicubic(13:(nrows-12),13:(ncols-12));
+Iy=Iy(13:(nrows-12),13:(ncols-12));
+figure(5),imshow(Iy)
+title('High-Resolution Reference Image')
+figure(6),imshow(Ibicubic)
+title('Ibicubic Image ')
+figure(7),imshow(uint8(imrec))
+title('reconstruction Image ')
+imrec=uint8(imrec);
+bicubicPSNR = psnr(Ibicubic,Iy)
+vdsrPSNR = psnr(imrec,Iy)
+
+%Measure the structural similarity index (SSIM) of each image.
+bicubicSSIM = ssim(Ibicubic,Iy)
+vdsrSSIM = ssim(imrec,Iy)
+
+%Measure perceptual image quality using the Naturalness Image Quality Evaluator (NIQE). Smaller NIQE scores indicate better perceptual quality. See niqe for more information about this metric.
+bicubicNIQE = niqe(Ibicubic)
+vdsrNIQE = niqe(imrec)
